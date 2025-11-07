@@ -38,6 +38,11 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.0</version>
+            </plugin>
             <!-- 生成可运行的“胖包”，附带 Main-Class -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
